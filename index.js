@@ -1,6 +1,7 @@
 import express from 'express';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
+import cors from 'cors'; // Importa el paquete cors
 import { GameManager } from './classes/multiplayer/gameManager.js';
 
 const app = express();
