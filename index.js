@@ -1,7 +1,6 @@
 import express from 'express';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
-import cors from 'cors'; // Importa el paquete cors
 import { GameManager } from './classes/multiplayer/gameManager.js';
 
 const app = express();
@@ -27,8 +26,20 @@ const io = new Server(server, {
 const PORT = process.env.PORT || 3000;
 const gameManager = new GameManager(io);
 
-// ... (resto de tu código de servidor)
+io.on('connection', (socket) => {
+  console.log(`Jugador conectado: ${socket.id}`);
+  gameManager.addPlayer(socket);
+
+  socket.on('disconnect', () => {
+    console.log(`Jugador desconectado: ${socket.id}`);
+    gameManager.removePlayer(socket.id);
+  });
+
+  socket.on('player-action', (data) => {
+    gameManager.handleAction(socket.id, data);
+  });
+});
 
 server.listen(PORT, () => {
-  console.log(`Servidor corriendo en el puerto ${PORT}`);
+  console.log(`Servidor corriendo en http://localhost:${PORT}`);
 });
