@@ -7,7 +7,8 @@ const app = express();
 const server = createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: '*', // Cambia esto a tu frontend en producción
+    origin: 'https://batalla-naval-navy.vercel.app', // Aquí está el cambio
+    methods: ['GET', 'POST'] // Opcional pero recomendado: especifica los métodos HTTP permitidos
   },
 });
 
