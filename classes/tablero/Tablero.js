@@ -1,9 +1,9 @@
 // Tablero.js (Backend)
 
 import CeldaClass from './Celda.js'; // Asegúrate de que esta ruta sea correcta para el backend
-import Pieza from './Pieza.js';     // Asumo que Pieza es tu clase Barco y su ruta es correcta
+import Pieza from '../ships/Pieza.js';     // Asumo que Pieza es tu clase Barco y su ruta es correcta
 
-class Tablero {
+export class Tablero {
   constructor(size = 10, initialGrid = null, initialShips = null) {
     this.size = size;
         
@@ -144,7 +144,7 @@ class Tablero {
         if (updatedShip.isSunk()) { // isSunk() debe ser un método de Pieza que verifica hits >= size
           attackStatus = 'sunk';
           attackMessage = `¡Hundiste un ${updatedShip.name}!`;
-          sunkShip = updatedShip.toSimpleObject(); // Envía la versión simple del barco hundido
+          sunkShip = updatedShip;
 
           // Marcar *todas* las celdas de este barco como parte de un barco hundido en la nueva cuadrícula.
           // Esto es CLAVE para la visualización de barcos hundidos en el frontend.
@@ -243,5 +243,3 @@ class Tablero {
     return new Tablero(obj.size, reconstructedGrid, reconstructedShips);
   }
 }
-
-export default Tablero;
