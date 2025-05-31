@@ -1,27 +1,22 @@
 import express from 'express';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
-import cors from 'cors';
-import { GameManager } from '../classes/multiplayer/gameManager.js'; // <-- ¡Ruta relativa ajustada!
+import cors from 'cors'; // Importa el paquete cors
+import { GameManager } from './classes/multiplayer/gameManager.js';
 
 const app = express();
 
-// Configuración de CORS para Express (Middleware)
+// Configuración de CORS para Express
 app.use(cors({
-  origin: 'https://batalla-naval-navy.vercel.app',
+  origin: ['https://batalla-naval-navy.vercel.app', 'http://localhost:5173'],
   methods: ['GET', 'POST'],
-  allowedHeaders: ['Content-Type'], // Esto es útil si tu frontend envía cabeceras personalizadas
+  allowedHeaders: ['Content-Type'],
   credentials: true
 }));
 
-// Opcional: Una ruta de prueba para verificar que Express funciona
-app.get('/', (req, res) => {
-  res.send('Backend de Batalla Naval en funcionamiento.');
-});
-
-const server = createServer(app); // Usa 'app' aquí para que Express maneje las solicitudes HTTP
+const server = createServer(app);
 const io = new Server(server, {
-  cors: { // Configuración de CORS específica para Socket.IO (necesaria para el websocket handshake)
+  cors: { // Mantén también la configuración de Socket.IO por si acaso
     origin: 'https://batalla-naval-navy.vercel.app',
     methods: ['GET', 'POST'],
     allowedHeaders: ['Content-Type'],
@@ -29,7 +24,7 @@ const io = new Server(server, {
   }
 });
 
-// GameManager y lógica de Socket.IO
+const PORT = process.env.PORT || 3000;
 const gameManager = new GameManager(io);
 
 io.on('connection', (socket) => {
@@ -46,7 +41,6 @@ io.on('connection', (socket) => {
   });
 });
 
-const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
-  console.log(`Servidor corriendo en el puerto ${PORT}`);
+  console.log(`Servidor corriendo en http://localhost:${PORT}`);
 });
