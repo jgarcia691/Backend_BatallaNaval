@@ -8,7 +8,7 @@ const app = express();
 
 // Configuración de CORS para Express
 app.use(cors({
-  origin: 'https://batalla-naval-navy.vercel.app',
+  origin: ['https://batalla-naval-navy.vercel.app', 'http://localhost:5173'],
   methods: ['GET', 'POST'],
   allowedHeaders: ['Content-Type'],
   credentials: true
