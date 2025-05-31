@@ -2,7 +2,7 @@ import Pieza from "./Pieza"
 
 class Portaaviones extends Pieza {
     constructor() {
-        super(5)
+        super(5, "Portaaviones", 5);
     }
 
     isSunk() {

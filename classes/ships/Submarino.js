@@ -2,7 +2,7 @@ import Pieza from "./Pieza"
 
 class Submarino extends Pieza{
     constructor(){
-        super(3)
+        super(3, "Submarino", 3);
     }
 
     isSunk() {

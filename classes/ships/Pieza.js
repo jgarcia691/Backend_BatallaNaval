@@ -1,62 +1,49 @@
-class Pieza {
-    constructor (size) {
-        this.size = size; // Tamaño de la pieza, número de partes que la componen
-        this.hits = 0; // Número de partes de la pieza por golpar
-        this.posicion = []; // Posición de la pieza en el tablero, [{fila, columna}, ...]
-        this.orientacion = null; // 'horizontal' o 'vertical'
-        this.sunk = false; // Indica si la pieza ha sido hundida
-        this.skin = null; // URL de la imagen del skin
-    }
+// Pieza.js (o tu clase Barco)
+import { v4 as uuidv4 } from 'uuid'; // Si usas UUID para IDs de barcos
 
-    hit() {
-        this.hits++;
-        if (this.hits >= this.length) {
-            this.sunk = true;
-        }
+class Pieza {
+    // El constructor ahora recibe las propiedades de un objeto plano para la reconstrucción
+    constructor(id = uuidv4(), name, size, hits = 0, orientation, positions = []) {
+        this.id = id;
+        this.name = name;
+        this.size = size;
+        this.hits = hits;
+        this.orientation = orientation;
+        // Almacena las posiciones de las celdas que ocupa el barco (objetos {row, col})
+        this.positions = positions; 
     }
 
     isSunk() {
-        return this.sunk;
-    }
-    
-    setSize(size) {
-        this.size = size;
+        return this.hits >= this.size;
     }
 
-    getSize() {
-        return this.size;
+    // Serializa la instancia de Pieza a un objeto plano
+    toSimpleObject() {
+        return {
+            id: this.id,
+            name: this.name,
+            size: this.size,
+            hits: this.hits,
+            orientation: this.orientation,
+            positions: this.positions.map(p => ({ row: p.row, col: p.col })), // Asegura que las posiciones sean objetos planos
+            isSunk: this.isSunk(), // Incluye el estado de hundimiento
+        };
     }
 
-    setHits(hits) {
-        this.hits = hits;
-    }
-
-    getHits() {
-        return this.hits;
-    }
-
-    setPosicion(posicion) {
-        this.posicion = posicion;
-    }
-
-    getPosicion() {
-        return this.posicion;
-    }
-
-    setOrientacion(orientacion) {
-        this.orientacion = orientacion;
-    }
-
-    getOrientacion() {
-        return this.orientacion;
-    }
-
-    setSkin(skin) {
-        this.skin = skin;
-    }
-
-    getSkin() {
-        return this.skin;
+    // Reconstruye una instancia de Pieza desde un objeto plano
+    static fromObject(obj) {
+        // Usa las propiedades del objeto plano para construir una nueva instancia
+        const pieza = new Pieza(
+            obj.id, 
+            obj.name, 
+            obj.size, 
+            obj.hits, 
+            obj.orientation, 
+            obj.positions.map(p => ({ row: p.row, col: p.col })) // Reconstruye posiciones
+        );
+        // Asegúrate de que el estado de hundimiento se mantenga
+        // (aunque `isSunk()` lo calcula, tenerlo en el objeto original puede ser útil)
+        return pieza;
     }
 }
 

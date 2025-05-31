@@ -2,8 +2,7 @@ import Pieza from '@/classes/Pieza';
 
 class Lancha extends Pieza{
     constructor() {
-        super(1)
-        this.skin = '/public/piezas/lancha.png'
+        super(1, "Lancha", 1);
     }
 
     getSize() {

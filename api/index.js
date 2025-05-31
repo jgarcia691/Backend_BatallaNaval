@@ -2,7 +2,7 @@ import express from 'express';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
 import cors from 'cors'; // Importa el paquete cors
-import { GameManager } from '../classes/multiplayer/gameManager.js'; // Asegúrate de que la ruta sea correcta
+import { GameManager } from '../classes/multiplayer/gameManager.js';
 
 const app = express();
 
@@ -36,7 +36,7 @@ io.on('connection', (socket) => {
     gameManager.removePlayer(socket.id);
   });
 
-  socket.on('player-action', (data) => {
+  socket.on('playerAction', (data) => { 
     gameManager.handleAction(socket.id, data);
   });
 });
