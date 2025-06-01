@@ -1,4 +1,4 @@
-import Pieza from './Pieza';
+import Pieza from '@/classes/ships/Pieza';
 
 class Lancha extends Pieza{
     constructor() {

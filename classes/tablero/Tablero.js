@@ -1,5 +1,3 @@
-// Tablero.js (Backend)
-
 import CeldaClass from './Celda.js'; // Asegúrate de que esta ruta sea correcta para el backend
 import Pieza from '../ships/Pieza.js';     // Asumo que Pieza es tu clase Barco y su ruta es correcta
 
@@ -52,51 +50,67 @@ export class Tablero {
     return true;
   }
 
-  placeShip(shipInstance, startRow, startCol, orientation) {
-    // Verificar si la instancia del barco tiene el ID para referencia
-    if (!shipInstance || !shipInstance.id) {
-      console.error("Error: shipInstance debe tener un ID para ser colocado.");
-      return { success: false, newTablero: this };
-    }
+  placeShip(shipInstance, startRow, startCol, orientation, ownerId = null) { // Añadido ownerId como parámetro opcional
+      // Verificaciones iniciales
+      if (!shipInstance || !shipInstance.id) {
+          console.error("Error: shipInstance debe tener un ID para ser colocado.");
+          return { success: false, newTablero: this };
+      }
 
-    if (!this.canPlaceShip(shipInstance.size, startRow, startCol, orientation)) {
-      return { success: false, newTablero: this }; 
-    }
+      if (!this.canPlaceShip(shipInstance.size, startRow, startCol, orientation)) {
+          return { success: false, newTablero: this }; 
+      }
 
-    // --- CRÍTICO: COPIA PROFUNDA para inmutabilidad del grid ---
-    // Crea una nueva cuadrícula donde se aplicarán los cambios.
-    const newGrid = this.grid.map(row => 
-        row.map(cell => CeldaClass.fromObject(cell.toSimpleObject())) // Copia cada celda creando una nueva instancia
-    );
-    
-    const cellsToOccupy = this.getShipCells(shipInstance.size, startRow, startCol, orientation);
+      // Verificar si el barco ya existe en el tablero
+      if (this.ships.some(s => s.id === shipInstance.id)) {
+          console.warn(`Barco con ID ${shipInstance.id} ya existe en el tablero.`);
+          return { success: false, newTablero: this };
+      }
 
-    cellsToOccupy.forEach(cellPos => {
-      // Modifica la celda CORRESPONDIENTE en la *nueva* cuadrícula.
-      const cellInNewGrid = newGrid[cellPos.row][cellPos.col];
-      cellInNewGrid.isOccupied = true;
-      cellInNewGrid.shipId = shipInstance.id; 
-      cellInNewGrid.shipName = shipInstance.name; 
-    });
+      // Crear nueva cuadrícula
+      const newGrid = this.grid.map(row => 
+          row.map(cell => CeldaClass.fromObject(cell.toSimpleObject()))
+      );
+      
+      const cellsToOccupy = this.getShipCells(shipInstance.size, startRow, startCol, orientation);
 
-    // Actualiza la instancia del barco con sus posiciones REALES en el tablero.
-    // Esto es vital para `attackCell` después.
-    const updatedShipInstance = Pieza.fromObject({ // Crea una nueva instancia de Pieza
-      id: shipInstance.id,
-      name: shipInstance.name,
-      size: shipInstance.size,
-      hits: shipInstance.hits,
-      orientation: orientation, // Asigna la orientación real
-      positions: cellsToOccupy // Asigna las posiciones reales de las celdas
-    });
+      // Actualizar celdas en la nueva cuadrícula
+      cellsToOccupy.forEach(cellPos => {
+          const cellInNewGrid = newGrid[cellPos.row][cellPos.col];
+          cellInNewGrid.isOccupied = true;
+          cellInNewGrid.shipId = shipInstance.id;
+          cellInNewGrid.shipName = shipInstance.name;
+          cellInNewGrid.ownerId = ownerId; // Añadimos el ownerId a la celda
+      });
 
-    // --- CRÍTICO: COPIA PROFUNDA para inmutabilidad de los ships ---
-    const newShips = this.ships.map(s => Pieza.fromObject(s.toSimpleObject())); // Copia cada barco
-    newShips.push(updatedShipInstance); // Añade el nuevo barco actualizado
+      // Crear nueva instancia del barco con toda la información necesaria
+      const updatedShipInstance = Pieza.fromObject({
+          id: shipInstance.id,
+          name: shipInstance.name,
+          size: shipInstance.size,
+          hits: shipInstance.hits,
+          orientation: orientation,
+          positions: cellsToOccupy,
+          ownerId: ownerId // Añadimos el ownerId al barco
+      });
 
-    // Devuelve un NUEVO tablero con la nueva cuadrícula y la nueva lista de barcos.
-    return { success: true, newTablero: new Tablero(this.size, newGrid, newShips) };
-  }
+      // Crear nueva lista de barcos
+      const newShips = this.ships.map(s => Pieza.fromObject(s.toSimpleObject()));
+      newShips.push(updatedShipInstance);
+
+      // Crear nuevo tablero con toda la información actualizada
+      const newTablero = new Tablero(this.size, newGrid, newShips);
+
+      // Log para debugging
+      console.log(`Barco ${updatedShipInstance.name} (ID: ${updatedShipInstance.id}${ownerId ? `, Owner: ${ownerId}` : ''}) colocado en el tablero.`);
+
+      return { 
+          success: true, 
+          newTablero: newTablero,
+          placedShip: updatedShipInstance // Añadimos el barco colocado a la respuesta
+      };
+}
+
 
   attackCell(row, col) {
     if (row < 0 || row >= this.size || col < 0 || col >= this.size) {
@@ -243,3 +257,5 @@ export class Tablero {
     return new Tablero(obj.size, reconstructedGrid, reconstructedShips);
   }
 }
+
+export default Tablero;

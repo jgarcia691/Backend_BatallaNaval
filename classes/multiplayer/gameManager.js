@@ -1,197 +1,153 @@
+// src/classes/multiplayer/gameManager.js
 import { v4 as uuidv4 } from 'uuid';
-import { Tablero } from '../tablero/Tablero.js';
+// Importa las nuevas clases de juego
+import { Game1v1, Game2v2 } from './gameModes.js'; 
 
 export class GameManager {
-  constructor(io) {
-    this.io = io;
-    this.waitingPlayers = [];
-    this.activeGames = new Map();
-  }
-
-  addPlayer(socket) {
-    const playerId = socket.id;
-    socket.emit('connectionSuccess', { playerId, message: 'Conectado. Buscando oponente...' });
-    this.waitingPlayers.push(socket);
-    socket.emit('statusUpdate', {
-      status: 'waitingInQueue',
-      message: `Estás en la cola. Jugadores esperando: ${this.waitingPlayers.length}.`,
-      waitingCount: this.waitingPlayers.length,
-    });
-    this.io.emit('waitingPlayersCountUpdate', { count: this.waitingPlayers.length });
-    console.log(`+ Jugador ${playerId} en cola. Total: ${this.waitingPlayers.length}`);
-    if (this.waitingPlayers.length >= 2) {
-      const player1Socket = this.waitingPlayers.shift();
-      const player2Socket = this.waitingPlayers.shift();
-      const gameId = uuidv4();
-      const gameData = {
-        id: gameId,
-        players: [
-          { socket: player1Socket, id: player1Socket.id, isReady: false, board: null },
-          { socket: player2Socket, id: player2Socket.id, isReady: false, board: null }
-        ],
-        turn: null,
-        phase: 'COLOCACION',
-        boards: {
-          [player1Socket.id]: null,
-          [player2Socket.id]: null
-        }
-      };
-      this.activeGames.set(gameId, gameData);
-      player1Socket.join(gameId);
-      player2Socket.join(gameId);
-      player1Socket.emit('gameFound', {
-        gameId,
-        playerNumber: 1,
-        opponentId: player2Socket.id,
-        message: `Partida ${gameId.substring(0,6)}... encontrada. Esperando oponente.`
-      });
-      player2Socket.emit('gameFound', {
-        gameId,
-        playerNumber: 2,
-        opponentId: player1Socket.id,
-        message: `Partida ${gameId.substring(0,6)}... encontrada. ¡Coloca tus barcos!`
-      });
-      console.log(`~ Partida emparejada: ${gameId} entre ${player1Socket.id} y ${player2Socket.id}. Fase: COLOCACION`);
-      this.io.emit('waitingPlayersCountUpdate', { count: this.waitingPlayers.length });
-    }
-  }
-
-  removePlayer(socketId) {
-    const initialQueueLength = this.waitingPlayers.length;
-    this.waitingPlayers = this.waitingPlayers.filter(socket => socket.id !== socketId);
-    if (this.waitingPlayers.length !== initialQueueLength) {
-      console.log(`- Jugador ${socketId} fuera de cola.`);
-      this.io.emit('waitingPlayersCountUpdate', { count: this.waitingPlayers.length });
-    }
-    for (const [gameId, game] of this.activeGames.entries()) {
-      const playerIndex = game.players.findIndex(p => p.id === socketId);
-      if (playerIndex !== -1) {
-        console.log(`- Jugador ${socketId} desconectado de juego ${gameId}.`);
-        const remainingPlayerInfo = game.players.find(p => p.id !== socketId);
-        if (remainingPlayerInfo && remainingPlayerInfo.socket) {
-          remainingPlayerInfo.socket.emit('opponentLeft', { message: 'Oponente abandonó.' });
-          remainingPlayerInfo.socket.emit('gameOver', { winnerId: remainingPlayerInfo.id, message: '¡Has ganado por desconexión!' });
-        }
-        game.players.forEach(p => { if (p.socket && p.socket.connected) p.socket.leave(gameId); });
-        this.activeGames.delete(gameId);
-        console.log(`x Juego ${gameId} terminado y eliminado.`);
-        break;
-      }
-    }
-  }
-
-  handleAction(socketId, data) {
-    let gameInstance = null;
-    let playerInGame = null;
-    for (const [gameId, game] of this.activeGames.entries()) {
-      playerInGame = game.players.find(p => p.id === socketId);
-      if (playerInGame) {
-        gameInstance = game;
-        break;
-      }
-    }
-    if (!gameInstance) {
-      console.log(`! Acción de ${socketId} sin juego activo.`);
-      this.io.to(socketId).emit('playerAction', { action: { type: 'ERROR', message: 'No estás en un juego activo.' }});
-      return;
+    constructor(ioEmitter, playersPerGame = 2) {
+        this.ioEmitter = ioEmitter; // Este es el objeto que el worker construyó para comunicarse con el Main Thread
+        this.waitingPlayers = [];
+        this.activeGames = new Map(); // Map<gameId, Game (Game1v1 o Game2v2)>
+        this.PLAYERS_PER_GAME = playersPerGame; // Define para qué modo es este GameManager
+        console.log(`GameManager inicializado para partidas de ${this.PLAYERS_PER_GAME} jugadores.`);
     }
 
-    if (data.type === 'PLAYER_READY') {
-        const { gameId, playerId: senderId, placedPlayerShipsData } = data;
-        playerInGame.isReady = true;
-        gameInstance.boards[senderId] = Tablero.fromSimpleObject(placedPlayerShipsData);
-        console.log(`> Jugador ${senderId} listo en ${gameId}. Listos: ${gameInstance.players.map(p => `${p.id}:${p.isReady}`).join(', ')}`);
-        const allPlayersReady = gameInstance.players.every(p => p.isReady);
-        if (allPlayersReady) {
-            console.log(`>> Ambos jugadores en ${gameId} listos. Iniciando batalla.`);
-            const startingPlayerInfo = gameInstance.players[Math.floor(Math.random() * gameInstance.players.length)];
-            gameInstance.turn = startingPlayerInfo.id;
-            gameInstance.phase = 'BATALLA';
-            this.io.to(gameId).emit('gameStarted', {
-                gameId: gameId,
-                startingPlayerId: startingPlayerInfo.id,
-                message: '¡Batalla iniciada!'
-            });
-        } else {
-            playerInGame.socket.emit('playerAction', {
-                action: { type: 'GAME_STATE_UPDATE', message: 'Esperando oponente...' }
-            });
-        }
-        return;
-    }
-
-    if (gameInstance.turn !== socketId) {
-      console.log(`! No es turno de ${socketId} para ${data.type}. Turno de: ${gameInstance.turn}`);
-      this.io.to(socketId).emit('playerAction', { action: { type: 'ERROR', message: 'No es tu turno.' }});
-      return;
-    }
-
-    const opponentPlayerInfo = gameInstance.players.find(p => p.id !== socketId);
-    if (!opponentPlayerInfo || !opponentPlayerInfo.socket) {
-      console.log(`! Oponente no encontrado para ${socketId} en juego ${gameInstance.id}.`);
-      this.io.to(socketId).emit('playerAction', { action: { type: 'ERROR', message: 'Error: Oponente no encontrado.' }});
-      return;
-    }
-    
-    if (data.type === 'ATTACK') {
-        const { coordinates } = data;
-        const targetPlayerBoardInstance = gameInstance.boards[opponentPlayerInfo.id];
+    addPlayer(playerInfo) {
+        const playerId = playerInfo.id;
         
-        if (!targetPlayerBoardInstance || !(targetPlayerBoardInstance instanceof Tablero)) {
-            console.error(`! Tablero del oponente ${opponentPlayerInfo.id} no es una instancia de Tablero. ¡Error en el servidor!`);
-            this.io.to(socketId).emit('playerAction', { action: { type: 'ERROR', message: 'Error interno del servidor: Tablero oponente corrupto.' }});
+        if (!this.waitingPlayers.some(p => p.id === playerId)) {
+            this.waitingPlayers.push(playerInfo);
+            console.log(`+ Jugador ${playerId.substring(0,6)}... en cola para ${this.PLAYERS_PER_GAME}p. Total: ${this.waitingPlayers.length} (Necesario: ${this.PLAYERS_PER_GAME})`);
+        } else {
+            console.log(`Jugador ${playerId.substring(0,6)}... ya está en la cola.`);
+        }
+
+        // Notificar al jugador sobre su estado en la cola
+        this.ioEmitter.to(playerId).emit('statusUpdate', {
+            status: 'waitingInQueue',
+            message: `Estás en la cola. Jugadores esperando: ${this.waitingPlayers.length}. Necesitamos ${this.PLAYERS_PER_GAME - this.waitingPlayers.length} más.`,
+            waitingCount: this.waitingPlayers.length,
+            requiredPlayers: this.PLAYERS_PER_GAME,
+            mode: this.PLAYERS_PER_GAME // Envía el modo de juego
+        });
+        // Emitir actualización general de la cola (para el frontend que muestra contadores)
+        this.ioEmitter.emit('waitingPlayersCountUpdate', { count: this.waitingPlayers.length, required: this.PLAYERS_PER_GAME, mode: this.PLAYERS_PER_GAME });
+
+        // Si hay suficientes jugadores, iniciar una partida
+        if (this.waitingPlayers.length >= this.PLAYERS_PER_GAME) {
+            const playersForGame = [];
+            for (let i = 0; i < this.PLAYERS_PER_GAME; i++) {
+                playersForGame.push(this.waitingPlayers.shift()); // Saca jugadores de la cola
+            }
+
+            const gameId = uuidv4();
+            let newGameInstance = null;
+
+            // Prepara los datos básicos de los jugadores para la instancia de juego
+            const gamePlayersData = playersForGame.map(p => ({
+                id: p.id,
+                username: p.username // Asegurarse de pasar el username si lo usas
+            }));
+
+            // Instanciar la clase de juego correcta según el modo
+            if (this.PLAYERS_PER_GAME === 4) {
+                newGameInstance = new Game2v2(gameId, gamePlayersData, this.ioEmitter);
+            } else { // Por defecto, es 1vs1
+                newGameInstance = new Game1v1(gameId, gamePlayersData, this.ioEmitter);
+            }
+
+            this.activeGames.set(gameId, newGameInstance); // Guardar la instancia de juego
+
+            playersForGame.forEach((player, index) => {
+                // Solicitar al Main Thread que el socket se una a la sala de Socket.IO
+                this.ioEmitter.joinRoom(gameId, player.id); 
+
+                let gameFoundData = {
+                    gameId,
+                    playerNumber: index + 1,
+                    message: `Partida ${gameId.substring(0, 6)}... encontrada. ¡Coloca tus barcos!`,
+                    playersInGame: newGameInstance.players.map(p => ({ id: p.id, teamId: p.team })) // Info completa de jugadores en el juego
+                };
+
+                if (this.PLAYERS_PER_GAME === 4) {
+                    const currentPlayerGameData = newGameInstance.players.find(gp => gp.id === player.id);
+                    const currentPlayerTeam = currentPlayerGameData ? currentPlayerGameData.team : null;
+                    
+                    const teamMates = newGameInstance.players
+                        .filter(p => p.team === currentPlayerTeam && p.id !== player.id)
+                        .map(p => p.id);
+
+                    const opponents = newGameInstance.players
+                        .filter(p => p.team !== currentPlayerTeam)
+                        .map(p => p.id);
+
+                    gameFoundData = {
+                        ...gameFoundData,
+                        teamId: currentPlayerTeam, 
+                        teamMates: teamMates,
+                        opponentIds: opponents,
+                    };
+                } else { // Para 1vs1, solo un oponente
+                    gameFoundData = {
+                        ...gameFoundData,
+                        opponentId: playersForGame.filter(p => p.id !== player.id)[0]?.id, 
+                    };
+                }
+                this.ioEmitter.to(player.id).emit('gameFound', gameFoundData);
+            });
+
+            console.log(`~ Partida emparejada: ${gameId.substring(0,6)}... con ${this.PLAYERS_PER_GAME} jugadores.`);
+            // Actualizar el contador de la cola después de emparejar
+            this.ioEmitter.emit('waitingPlayersCountUpdate', { count: this.waitingPlayers.length, required: this.PLAYERS_PER_GAME, mode: this.PLAYERS_PER_GAME });
+        }
+    }
+
+    removePlayer(socketId) {
+        // Eliminar de la cola si está allí
+        const initialQueueLength = this.waitingPlayers.length;
+        this.waitingPlayers = this.waitingPlayers.filter(playerInfo => playerInfo.id !== socketId);
+        if (this.waitingPlayers.length !== initialQueueLength) {
+            console.log(`- Jugador ${socketId.substring(0,6)}... fuera de cola.`);
+            this.ioEmitter.emit('waitingPlayersCountUpdate', { count: this.waitingPlayers.length, required: this.PLAYERS_PER_GAME, mode: this.PLAYERS_PER_GAME });
+            return; // No es necesario buscar en juegos activos si ya estaba en cola
+        }
+
+        // Buscar en juegos activos y delegar la desconexión a la instancia de juego
+        for (const [gameId, gameInstance] of this.activeGames.entries()) {
+            if (gameInstance.players.some(p => p.id === socketId)) {
+                // Solicitar al Main Thread que el socket deje la sala
+                this.ioEmitter.leaveRoom(gameId, [socketId]); 
+                const gameEnded = gameInstance.handlePlayerDisconnect(socketId);
+                if (gameEnded) { // Si el juego terminó debido a la desconexión
+                    this.activeGames.delete(gameId);
+                    console.log(`--- Juego ${gameId.substring(0,6)}... eliminado de activeGames.`);
+                }
+                break; // El jugador solo puede estar en un juego
+            }
+        }
+    }
+
+    handleAction(socketId, data) {
+        let gameInstance = null;
+        // Encuentra la instancia de juego a la que pertenece el jugador
+        for (const game of this.activeGames.values()) {
+            if (game.players.some(p => p.id === socketId)) {
+                gameInstance = game;
+                break;
+            }
+        }
+        if (!gameInstance) {
+            this.ioEmitter.to(socketId).emit('playerAction', { action: { type: 'ERROR', message: 'No estás en un juego activo.' } });
             return;
         }
 
-        const attackResult = targetPlayerBoardInstance.attackCell(coordinates.row, coordinates.col);
-        gameInstance.boards[opponentPlayerInfo.id] = attackResult.newTablero; 
-        
-        console.log(`> ${socketId} ataca [${coordinates.row},${coordinates.col}] en ${opponentPlayerInfo.id}. Resultado: ${attackResult.message}`);
-        
-        console.log(`DEBUG: [Backend] Enviando ATTACK_RESULT a ATACANTE (${socketId})`);
-        console.log(`  status: ${attackResult.status}`);
-        console.log(`  message: ${attackResult.message}`);
-        // Para una depuración más detallada del tablero, puedes expandir el log:
-        const simpleBoardForDebug = attackResult.newTablero.toSimpleObject();
-        console.log(`  newTableroRival (grid de celda atacada):`);
+        // Delega la acción a la instancia de juego específica
+        gameInstance.handleAction(socketId, data);
 
-        this.io.to(socketId).emit('playerAction', {
-            action: {
-                type: 'ATTACK_RESULT',
-                coordinates,
-                status: attackResult.status,
-                message: attackResult.message,
-                sunkShip: attackResult.sunkShip ? attackResult.sunkShip.toSimpleObject() : null,
-                newTableroRival: attackResult.newTablero.toSimpleObject() 
-            }
-        });
-
-        this.io.to(opponentPlayerInfo.id).emit('playerAction', {
-            action: {
-                type: 'ATTACK_RECEIVED',
-                coordinates,
-                status: attackResult.status,
-                message: attackResult.message,
-                sunkShip: attackResult.sunkShip ? attackResult.sunkShip.toSimpleObject() : null,
-            }
-        });
-
-        if (attackResult.newTablero.areAllShipsSunk()) {
-            this.io.to(gameInstance.id).emit('playerAction', {
-                action: { type: 'GAME_OVER', winnerId: socketId, message: `¡${socketId} gana la partida!` }
-            });
-            gameInstance.phase = 'FINALIZADO';
-            gameInstance.turn = null;
-        } else {
-            gameInstance.turn = opponentPlayerInfo.id;
-            this.io.to(gameInstance.id).emit('playerAction', {
-                action: { type: 'TURN_CHANGE', nextPlayerId: gameInstance.turn }
-            });
+        // Si el juego ha terminado después de la acción, limpialo
+        if (gameInstance.phase === 'FINALIZADO') {
+            this.activeGames.delete(gameInstance.id);
+            console.log(`--- Juego ${gameInstance.id.substring(0,6)}... eliminado de activeGames.`);
         }
-
-    } else {
-        console.log(`! Acción desconocida de ${socketId}: ${data.type}`);
-        this.io.to(socketId).emit('playerAction', { action: { type: 'ERROR', message: `Acción no reconocida: ${data.type}` }});
     }
-  }
 }
