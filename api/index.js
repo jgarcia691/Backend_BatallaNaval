@@ -1,4 +1,3 @@
-// index.js
 import express from 'express';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
@@ -29,7 +28,7 @@ const io = new Server(server, {
   }
 });
 
-const PORT = process.env.PORT || 3000;
+const PORT = 3000;
 
 const gameWorker2PPath = path.resolve(__dirname, 'gameWorker.js');
 const gameWorker2P = new Worker(gameWorker2PPath, {

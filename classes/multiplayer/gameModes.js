@@ -15,7 +15,7 @@ class Game {
         this.playersPerGame = playersPerGame;
         this.turnIndex = 0;
         this.turn = null;
-        this.phase = 'placement'; // Fase inicial ahora es placement
+        this.phase = 'placement'; // Fase inicial
         this.boards = {};
         this.playerOrder = [];
         this.players.forEach(p => {
@@ -54,7 +54,6 @@ class Game {
             }
 
             // Si el jugador desconectado era el del turno, avanzar solo si el juego ya está en BATALLA
-            // En placement, la lógica de "allPlayersReadyForPlacement" se encargará de reajustar si es necesario
             if (this.turn === socketId && this.phase === 'BATALLA') {
                 this.advanceTurn();
             }
@@ -66,63 +65,24 @@ class Game {
     sendGameStateUpdateToAll() {
         this.players.filter(p => p.isActive).forEach(player => {
             let myBoard = null;
-            let opponentBoard = null;
-            let allyBoard = null;
-            let secondOpponentBoard = null;
-            let rival1Id = null;
-            let rival2Id = null;
-            let allyId = null;
+            const opponentBoards = {};
+            const opponentIds = this.players.filter(op => op.id !== player.id && op.isActive).map(op => op.id);
 
+            myBoard = this.boards[player.id]?.toSimpleObject() || null;
 
-            if (this.playersPerGame === 2) {
-                myBoard = this.boards[player.id]?.toSimpleObject() || null;
-                const opponentPlayer = this.players.find(p => p.id !== player.id && p.isActive);
-                if (opponentPlayer) {
-                    opponentBoard = this.boards[opponentPlayer.id]?.toSimpleObject(true) || null; // Ocultar barcos del oponente
-                    rival1Id = opponentPlayer.id; // Asignar el ID del rival para 1v1
-                }
-            } else if (this.playersPerGame === 4) { // Lógica para 2vs2 (tablero por equipo)
-                const currentPlayerTeamId = player.team;
-                // El tablero propio en 2vs2 es el tablero del equipo del jugador, que se muestra a sí mismo
-                myBoard = this.boards[currentPlayerTeamId]?.toSimpleObject(false) || null;
-
-                const opponentTeamId = currentPlayerTeamId === 'A' ? 'B' : 'A';
-                if (this.boards[opponentTeamId]) {
-                    opponentBoard = this.boards[opponentTeamId].toSimpleObject(true); // Siempre ocultar barcos del oponente
-
-                }
-
-                // Para 2vs2, necesitamos enviar los IDs de los rivales y aliados específicos
-                const teamA = this.teams ? this.teams['A'] : null;
-                const teamB = this.teams ? this.teams['B'] : null;
-
-                if (teamA && teamB) {
-                    if (currentPlayerTeamId === 'A') {
-                        rival1Id = teamB.players ? teamB.players[0] : null;
-                        rival2Id = teamB.players ? teamB.players[1] : null;
-                        allyId = teamA.players ? teamA.players.find(id => id !== player.id) : null;
-                    } else if (currentPlayerTeamId === 'B') { // Team B
-                        rival1Id = teamA.players ? teamA.players[0] : null;
-                        rival2Id = teamA.players ? teamA.players[1] : null;
-                        allyId = teamB.players ? teamB.players.find(id => id !== player.id) : null;
-                    }
-                }
-            }
+            opponentIds.forEach(opponentId => {
+                opponentBoards[opponentId] = this.boards[opponentId]?.toSimpleObject(true) || null;
+            });
 
             this.ioEmitter.to(player.id).emit('playerAction', {
                 action: {
                     type: 'GAME_STATE_UPDATE',
                     myBoard: myBoard,
-                    opponentBoard: opponentBoard,
-                    allyBoard: allyBoard, // Podría ser el tablero del compañero en 2vs2 si se muestra individualmente
-                    secondOpponentBoard: secondOpponentBoard, // Podría ser el segundo oponente en 2vs2 si se muestra individualmente
-                    playersInfo: this.players.filter(p => p.isActive).map(p => ({ id: p.id, teamId: p.team, isReady: p.isReady, allMyShipsSunk: p.allMyShipsSunk })),
+                    opponentBoards: opponentBoards,
+                    playersInfo: this.players.filter(p => p.isActive).map(p => ({ id: p.id, isReady: p.isReady, allMyShipsSunk: p.allMyShipsSunk })),
                     message: this.phase === 'BATALLA' ? '¡Batalla en curso!' : `Fase actual: ${this.phase}`,
                     currentPlayerTurn: this.turn,
-                    gamePhase: this.phase, // ¡IMPORTANTE! Envía la fase actual
-                    rival1Id: rival1Id, // Para que el frontend sepa quién es el rival 1
-                    rival2Id: rival2Id, // Para que el frontend sepa quién es el rival 2 (en 2vs2)
-                    allyId: allyId // Para que el frontend sepa quién es el aliado (en 2vs2)
+                    gamePhase: this.phase
                 }
             });
         });
@@ -341,21 +301,9 @@ class Game2v2 extends Game {
         this.boards = {}; // Tableros individuales para cada jugador
         this.playerOrder = playersData.map(p => p.id);
         this.currentPlayerTurn = this.playerOrder[0] || null; // Inicializar el turno al primer jugador
-        this.eliminatedPlayers = {}; // Para rastrear jugadores eliminados
         this.assignInitialState();
-        this.teams = this.assignTeams(playersData);
-        console.log(`Juego 2vs2 ${id.substring(0, 6)}... inicializado con equipos. Fase: ${this.phase}`);
+        console.log(`Juego 2vs2 ${id.substring(0, 6)}... inicializado con 4 tableros independientes. Fase: ${this.phase}`);
         this.sendGameStateUpdateToAll();
-    }
-
-    assignTeams(playersData) {
-        const teamA = { id: 'A', players: [playersData[0].id, playersData[1].id] };
-        const teamB = { id: 'B', players: [playersData[2].id, playersData[3].id] };
-        this.players[0].team = 'A';
-        this.players[1].team = 'A';
-        this.players[2].team = 'B';
-        this.players[3].team = 'B';
-        return { 'A': teamA, 'B': teamB };
     }
 
     assignInitialState() {
@@ -374,31 +322,10 @@ class Game2v2 extends Game {
         this.players.forEach(player => {
             const myBoard = this.boards[player.id] ? this.boards[player.id].toSimpleObject() : null;
             const opponentBoards = {};
-            let rival1Id = null;
-            let rival2Id = null;
-            let allyId = null;
+            const opponentIds = this.players.filter(p => p.id !== player.id && p.isActive).map(p => p.id);
 
-            const currentPlayerTeamId = player.team;
-            const opponentTeamId = currentPlayerTeamId === 'A' ? 'B' : 'A';
-
-            const teamA = this.teams['A'];
-            const teamB = this.teams['B'];
-
-            if (teamA && teamB) {
-                if (currentPlayerTeamId === 'A') {
-                    rival1Id = teamB.players[0];
-                    rival2Id = teamB.players[1];
-                    allyId = teamA.players.find(id => id !== player.id);
-                } else { // Team B
-                    rival1Id = teamA.players[0];
-                    rival2Id = teamA.players[1];
-                    allyId = teamB.players.find(id => id !== player.id);
-                }
-            }
-
-            const opponentTeam = this.players.filter(p => p.team === opponentTeamId && p.isActive);
-            opponentTeam.forEach(opponent => {
-                opponentBoards[opponent.id] = this.boards[opponent.id] ? this.boards[opponent.id].toSimpleObject(true) : null;
+            opponentIds.forEach(opponentId => {
+                opponentBoards[opponentId] = this.boards[opponentId] ? this.boards[opponentId].toSimpleObject(true) : null;
             });
 
             this.ioEmitter.to(player.id).emit('playerAction', {
@@ -410,10 +337,7 @@ class Game2v2 extends Game {
                     message: this.message,
                     currentPlayerTurn: this.turn,
                     gamePhase: this.phase,
-                    playersInfo: this.players.map(p => ({ id: p.id, isActive: p.isActive, isReady: p.isReady, allMyShipsSunk: p.allMyShipsSunk, teamId: p.team })),
-                    rival1Id: rival1Id,
-                    rival2Id: rival2Id,
-                    allyId: allyId
+                    playersInfo: this.players.map(p => ({ id: p.id, isActive: p.isActive, isReady: p.isReady, allMyShipsSunk: p.allMyShipsSunk })),
                 }
             });
         });
@@ -458,7 +382,7 @@ class Game2v2 extends Game {
                 if (allPlayersReady) {
                     console.log(`>> Todos los jugadores en ${this.id.substring(0, 6)}... han colocado barcos. Transicionando a fase de BATALLA.`);
                     this.phase = 'BATALLA';
-                    this.playerOrder = this.players.map(p => p.id);
+                    this.playerOrder = this.players.filter(p => p.isActive).map(p => p.id);
                     if (this.playerOrder.length > 0) {
                         this.turnIndex = Math.floor(Math.random() * this.playerOrder.length);
                         this.turn = this.playerOrder[this.turnIndex];
@@ -487,6 +411,14 @@ class Game2v2 extends Game {
                 this.ioEmitter.to(socketId).emit('playerAction', { action: { type: 'ERROR', message: 'No es tu turno.' } });
                 return;
             }
+
+            const attackingPlayerBoard = this.boards[socketId];
+            if (attackingPlayerBoard && attackingPlayerBoard.areAllShipsSunk()) {
+                this.ioEmitter.to(socketId).emit('playerAction', { action: { type: 'ERROR', message: 'No puedes atacar. ¡Todos tus barcos han sido hundidos!' } });
+                this.advanceTurnBattle(); // Pierde el turno
+                return;
+            }
+        
 
             if (data.type === 'ATTACK') {
                 const { targetPlayerId, coordinates } = data;
@@ -586,28 +518,23 @@ class Game2v2 extends Game {
         if (this.phase === 'FINALIZADO') return;
 
         const activePlayersAlive = this.players.filter(p => p.isActive && !p.allMyShipsSunk).length;
-        const teamsAlive = {};
-        this.players.filter(p => p.isActive && !p.allMyShipsSunk).forEach(p => {
-            teamsAlive[p.team] = true;
-        });
 
-        if (Object.keys(teamsAlive).length <= 1) {
+        if (activePlayersAlive <= 1) {
             this.phase = 'FINALIZADO';
-            const winningTeamId = Object.keys(teamsAlive)[0] || null;
-            const winnerTeamPlayers = this.players.filter(p => p.team === winningTeamId && p.isActive);
-            const winnerNames = winnerTeamPlayers.map(p => p.id.substring(0, 6)).join(' y ') + (winnerTeamPlayers.length > 1 ? ' han' : ' ha');
-            const message = winningTeamId ? `¡El equipo ${winningTeamId} (${winnerNames}... ganado la batalla!` : '¡La partida ha terminado sin ganador claro!';
+            const winningPlayer = this.players.find(p => p.isActive && !p.allMyShipsSunk);
+            const winnerId = winningPlayer ? winningPlayer.id : null;
+            const winnerName = winnerId ? winnerId.substring(0, 6) + '...' : 'nadie';
 
-            console.log(`### Juego 2vs2 ${this.id.substring(0, 6)}... FINALIZADO. Ganador: Equipo ${winningTeamId || 'Nadie'}`);
+            console.log(`### Juego 2vs2 ${this.id.substring(0, 6)}... FINALIZADO. Ganador: ${winnerName}`);
             this.ioEmitter.toRoom(this.id).emit('playerAction', {
                 action: {
                     type: 'GAME_OVER',
-                    winnerTeamId: winningTeamId,
-                    message: message
+                    winnerId: winnerId,
+                    message: winnerId ? `¡${winnerName} ha ganado la batalla!` : '¡La partida ha terminado sin ganador claro!'
                 }
             });
         }
     }
 }
 
-export { Game1v1, Game2v2, Game};
+export { Game1v1, Game2v2, Game};``

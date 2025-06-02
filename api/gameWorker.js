@@ -1,16 +1,10 @@
-// src/gameWorker.js
 import { parentPort, workerData } from 'worker_threads';
 import { GameManager } from '../classes/multiplayer/gameManager.js';
-// Asegúrate de que Tablero.js esté accesible desde gameModes.js
 
 const NUM_PLAYERS_MODE = workerData.playersPerGame;
 const WORKER_NAME = workerData.workerName;
 
 let gameManager = null;
-
-// El objeto `ioEmitter` que el GameManager usará para comunicarse con el hilo principal.
-// Este objeto transforma las llamadas de `io.emit`, `io.to().emit`, `socket.join`, `socket.leave`
-// en mensajes que se envían al hilo principal para que él realice la operación real de Socket.IO.
 gameManager = new GameManager(
     {
         // Emisión general a todos los sockets conectados (simula io.emit)
@@ -60,7 +54,6 @@ gameManager = new GameManager(
 parentPort.on('message', (message) => {
     switch (message.type) {
         case 'addPlayer':
-            // Asegúrate de pasar el playerInfo completo si lo usas en GameManager (como username)
             gameManager.addPlayer({ id: message.playerId, username: message.playerInfo.username });
             break;
         case 'removePlayer':
