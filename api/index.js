@@ -56,7 +56,7 @@ const handleWorkerMessage = (workerInstance, message) => {
       } else if (gameId) {
           io.to(gameId).emit(event, data); // Emitir a la sala del juego
       } else {
-        io.emit(event, data); // Emisión general (ej. contadores de cola)
+        io.emit(event, data); // Emisión general 
       }
       break;
     case 'joinRoom':

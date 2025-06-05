@@ -40,7 +40,7 @@ export class GameManager {
 
             if (this.PLAYERS_PER_GAME === 4) {
                 newGameInstance = new Game2v2(gameId, gamePlayersData, this.ioEmitter);
-            } else { // Asumimos 1v1 si no es 4 jugadores
+            } else {
                 newGameInstance = new Game1v1(gameId, gamePlayersData, this.ioEmitter);
             }
 
@@ -49,7 +49,6 @@ export class GameManager {
             playersForGame.forEach((player) => {
                 this.ioEmitter.joinRoom(gameId, player.id);
                 
-                // Calcular los IDs de los oponentes como un array para cualquier modo
                 const opponentIds = newGameInstance.players
                     .filter(p => p.id !== player.id)
                     .map(p => p.id);
@@ -60,8 +59,8 @@ export class GameManager {
                     playersInGame: newGameInstance.players.map(p => ({ id: p.id, teamId: p.team })),
                     currentPlayerTurn: newGameInstance.turn,
                     gamePhase: newGameInstance.phase,
-                    opponentIds: opponentIds, // SIEMPRE enviamos un array de oponentes
-                    teamId: player.team // Asegúrate de enviar el teamId para el jugador
+                    opponentIds: opponentIds,
+                    teamId: player.team
                 };
 
                 if (this.PLAYERS_PER_GAME === 4) {

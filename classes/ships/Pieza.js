@@ -1,7 +1,6 @@
 import { v4 as uuidv4 } from 'uuid'; 
 
 export class Pieza {
-    // El constructor ahora recibe las propiedades de un objeto plano para la reconstrucción
     constructor(id = uuidv4(), name, size, hits = 0, orientation, positions = [], ownerId = null) {
         this.id = id;
         this.name = name;
