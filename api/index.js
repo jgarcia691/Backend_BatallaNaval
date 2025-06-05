@@ -24,7 +24,9 @@ const io = new Server(server, {
     origin: ['https://batalla-naval-navy.vercel.app', 'http://localhost:5173'],
     methods: ['GET', 'POST'],
     allowedHeaders: ['Content-Type'],
-    credentials: true
+    credentials: true,
+    pingInterval: 25000, 
+    pingTimeout: 60000,  
   }
 });
 

@@ -37,41 +37,40 @@ export class GameManager {
                 id: p.id,
                 username: p.username
             }));
+
             if (this.PLAYERS_PER_GAME === 4) {
                 newGameInstance = new Game2v2(gameId, gamePlayersData, this.ioEmitter);
-            } else {
+            } else { // Asumimos 1v1 si no es 4 jugadores
                 newGameInstance = new Game1v1(gameId, gamePlayersData, this.ioEmitter);
             }
+
             this.activeGames.set(gameId, { instance: newGameInstance, playersReady: new Set() });
-            playersForGame.forEach((player, index) => {
+
+            playersForGame.forEach((player) => {
                 this.ioEmitter.joinRoom(gameId, player.id);
+                
+                // Calcular los IDs de los oponentes como un array para cualquier modo
+                const opponentIds = newGameInstance.players
+                    .filter(p => p.id !== player.id)
+                    .map(p => p.id);
+
                 let gameFoundData = {
                     gameId,
-                    playerNumber: index + 1,
                     message: `Partida ${gameId.substring(0, 6)}... encontrada. ¡Coloca tus barcos!`,
                     playersInGame: newGameInstance.players.map(p => ({ id: p.id, teamId: p.team })),
                     currentPlayerTurn: newGameInstance.turn,
-                    gamePhase: this.PLAYERS_PER_GAME === 4 ? 'placement' : newGameInstance.phase
+                    gamePhase: newGameInstance.phase,
+                    opponentIds: opponentIds, // SIEMPRE enviamos un array de oponentes
+                    teamId: player.team // Asegúrate de enviar el teamId para el jugador
                 };
+
                 if (this.PLAYERS_PER_GAME === 4) {
-                    const opponentIds = newGameInstance.players
-                        .filter(p => p.id !== player.id)
-                        .map(p => p.id);
-                    gameFoundData = {
-                        ...gameFoundData,
-                        opponentIds: opponentIds,
-                    };
                     this.ioEmitter.to(player.id).emit('startPlacement', { gameId: gameId });
-                } else {
-                    const opponent = playersForGame.find(p => p.id !== player.id);
-                    gameFoundData = {
-                        ...gameFoundData,
-                        opponentId: opponent ? opponent.id : null,
-                        gamePhase: newGameInstance.phase
-                    };
                 }
+                
                 this.ioEmitter.to(player.id).emit('gameFound', gameFoundData);
             });
+
             console.log(`~ Partida emparejada: ${gameId.substring(0,6)}... con ${this.PLAYERS_PER_GAME} jugadores. Turno inicial: ${newGameInstance.turn ? newGameInstance.turn.substring(0,6) + '...' : 'N/A'}. Fase: ${newGameInstance.phase}.`);
             this.ioEmitter.emit('waitingPlayersCountUpdate', { count: this.waitingPlayers.length, required: this.PLAYERS_PER_GAME, mode: this.PLAYERS_PER_GAME });
         }
